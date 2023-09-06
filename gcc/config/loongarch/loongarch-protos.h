@@ -223,4 +223,6 @@ extern void loongarch_register_pragmas (void);
 extern bool loongarch_process_target_attr (tree args, tree fndecl);
 extern rtx loongarch_gen_stepped_int_parallel (unsigned int nelts, int base,
 					       int step);
+extern void loongarch_init_cumulative_args (CUMULATIVE_ARGS *, tree, rtx,
+					    tree, int);
 #endif /* ! GCC_LOONGARCH_PROTOS_H */

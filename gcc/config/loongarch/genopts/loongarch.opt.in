@@ -181,6 +181,10 @@ maddr-reg-reg-cost=
 Target RejectNegative Joined UInteger Var(la_addr_reg_reg_cost) Save
 -maddr-reg-reg-cost=COST  Set the cost of ADDRESS_REG_REG to the value calculated by COST.
 
+mvecarg
+Target Var(TARGET_VECARG) Init(0)
+Enable vector ABI extension on the top of lp64d.
+
 mcheck-zero-division
 Target Mask(CHECK_ZERO_DIV) Save
 Trap on integer divide by zero.

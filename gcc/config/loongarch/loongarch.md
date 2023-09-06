@@ -109,6 +109,9 @@
   UNSPECV_MOVFCSR2GR
   UNSPECV_MOVGR2FCSR
 
+  ;; For calling conventions.
+  UNSPEC_CALLEE_PCS
+
   ;; Others
   UNSPECV_CPUCFG
   UNSPECV_ASRTLE_D
@@ -3744,11 +3747,12 @@
 
 ;; Sibling calls.  All these patterns use jump instructions.
 
+;; Use third slot of paramaters to store ABI infomation.
 (define_expand "sibcall"
   [(parallel [(call (match_operand 0 "")
 		    (match_operand 1 ""))
-	      (use (match_operand 2 ""))	;; next_arg_reg
-	      (use (match_operand 3 ""))])]	;; struct_value_size_rtx
+	      (use (unspec:SI [(match_operand 2 "const_int_operand")]
+		    UNSPEC_CALLEE_PCS))])]
   ""
 {
   rtx target = loongarch_legitimize_call_address (XEXP (operands[0], 0));
@@ -3756,10 +3760,12 @@
   if (GET_CODE (target) == LO_SUM)
     emit_call_insn (gen_sibcall_internal_1 (Pmode, XEXP (target, 0),
 					    XEXP (target, 1),
-					    operands[1]));
+					    operands[1],
+					    operands[2]));
   else
     {
-      rtx call = emit_call_insn (gen_sibcall_internal (target, operands[1]));
+      rtx call = emit_call_insn (gen_sibcall_internal (target, operands[1],
+	    operands[2]));
 
       if (TARGET_CMODEL_MEDIUM && !REG_P (target))
 	clobber_reg (&CALL_INSN_FUNCTION_USAGE (call),
@@ -3770,7 +3776,9 @@
 
 (define_insn "sibcall_internal"
   [(call (mem:SI (match_operand 0 "call_insn_operand" "j,c,b"))
-	 (match_operand 1 "" ""))]
+	 (match_operand 1 "" ""))
+   (use (unspec:SI [(match_operand 2 "const_int_operand")]
+         UNSPEC_CALLEE_PCS))]
   "SIBLING_CALL_P (insn)"
 {
   switch (which_alternative)
@@ -3796,7 +3804,9 @@
 (define_insn "@sibcall_internal_1<mode>"
   [(call (mem:P (lo_sum:P (match_operand:P 0 "register_operand" "j")
 			  (match_operand:P 1 "symbolic_operand" "")))
-	 (match_operand 2 "" ""))]
+	 (match_operand 2 "" ""))
+   (use (unspec:SI [(match_operand 3 "const_int_operand")]
+	 UNSPEC_CALLEE_PCS))]
   "SIBLING_CALL_P (insn) && TARGET_CMODEL_MEDIUM"
   "jirl\t$r0,%0,%%pc_lo12(%1)"
   [(set_attr "jirl" "indirect")])
@@ -3805,7 +3815,8 @@
   [(parallel [(set (match_operand 0 "")
 		   (call (match_operand 1 "")
 			 (match_operand 2 "")))
-	      (use (match_operand 3 ""))])]		;; next_arg_reg
+	      (use (unspec:SI [(match_operand 3 "const_int_operand")]
+		    UNSPEC_CALLEE_PCS))])]
   ""
 {
   rtx target = loongarch_legitimize_call_address (XEXP (operands[1], 0));
@@ -3821,14 +3832,16 @@
 							   XEXP (target, 0),
 							   XEXP (target, 1),
 							   operands[2],
-							   arg2));
+							   arg2,
+							   operands[3]));
       else
 	{
 	  rtx call
 	    = emit_call_insn (gen_sibcall_value_multiple_internal (arg1,
-								   target,
-								   operands[2],
-								   arg2));
+							   target,
+							   operands[2],
+							   arg2,
+							   operands[3]));
 
 	  if (TARGET_CMODEL_MEDIUM && !REG_P (target))
 	    clobber_reg (&CALL_INSN_FUNCTION_USAGE (call),
@@ -3845,12 +3858,13 @@
 	emit_call_insn (gen_sibcall_value_internal_1 (Pmode, operands[0],
 						  XEXP (target, 0),
 						  XEXP (target, 1),
-						  operands[2]));
+						  operands[2], operands[3]));
       else
 	{
 	  rtx call = emit_call_insn (gen_sibcall_value_internal (operands[0],
 								 target,
-								 operands[2]));
+								 operands[2],
+								 operands[3]));
 
 	  if (TARGET_CMODEL_MEDIUM && !REG_P (target))
 	    clobber_reg (&CALL_INSN_FUNCTION_USAGE (call),
@@ -3863,7 +3877,9 @@
 (define_insn "sibcall_value_internal"
   [(set (match_operand 0 "register_operand" "")
 	(call (mem:SI (match_operand 1 "call_insn_operand" "j,c,b"))
-	      (match_operand 2 "" "")))]
+	      (match_operand 2 "" "")))
+   (use (unspec:SI [(match_operand 3 "const_int_operand")]
+	 UNSPEC_CALLEE_PCS))]
   "SIBLING_CALL_P (insn)"
 {
   switch (which_alternative)
@@ -3890,7 +3906,9 @@
   [(set (match_operand 0 "register_operand" "")
 	(call (mem:P (lo_sum:P (match_operand:P 1 "register_operand" "j")
 			       (match_operand:P 2 "symbolic_operand" "")))
-	      (match_operand 3 "" "")))]
+	      (match_operand 3 "" "")))
+   (use (unspec:SI [(match_operand 4 "const_int_operand")]
+	 UNSPEC_CALLEE_PCS))]
   "SIBLING_CALL_P (insn) && TARGET_CMODEL_MEDIUM"
   "jirl\t$r0,%1,%%pc_lo12(%2)"
   [(set_attr "jirl" "indirect")])
@@ -3899,6 +3917,8 @@
   [(set (match_operand 0 "register_operand" "")
 	(call (mem:SI (match_operand 1 "call_insn_operand" "j,c,b"))
 	      (match_operand 2 "" "")))
+   (use (unspec:SI [(match_operand 4 "const_int_operand")]
+	 UNSPEC_CALLEE_PCS))
    (set (match_operand 3 "register_operand" "")
 	(call (mem:SI (match_dup 1))
 	      (match_dup 2)))]
@@ -3930,6 +3950,8 @@
 			        (match_operand:P 2 "symbolic_operand" "")]
 		      UNSPEC_SIBCALL_VALUE_MULTIPLE_INTERNAL_1))
 	      (match_operand 3 "" "")))
+   (use (unspec:SI [(match_operand 5 "const_int_operand")]
+	 UNSPEC_CALLEE_PCS))
    (set (match_operand 4 "register_operand" "")
 	(call (mem:P (unspec:P [(match_dup 1)
 			        (match_dup 2)]
@@ -3942,23 +3964,26 @@
 (define_expand "call"
   [(parallel [(call (match_operand 0 "")
 		    (match_operand 1 ""))
-	      (use (match_operand 2 ""))	;; next_arg_reg
-	      (use (match_operand 3 ""))])]	;; struct_value_size_rtx
+	      (use (unspec:SI [(match_operand 2 "const_int_operand")]
+		    UNSPEC_CALLEE_PCS))])]
   ""
 {
   rtx target = loongarch_legitimize_call_address (XEXP (operands[0], 0));
 
   if (GET_CODE (target) == LO_SUM)
     emit_call_insn (gen_call_internal_1 (Pmode, XEXP (target, 0),
-					 XEXP (target, 1), operands[1]));
+					 XEXP (target, 1), operands[1],
+					 operands[2]));
   else
-    emit_call_insn (gen_call_internal (target, operands[1]));
+    emit_call_insn (gen_call_internal (target, operands[1], operands[2]));
   DONE;
 })
 
 (define_insn "call_internal"
   [(call (mem:SI (match_operand 0 "call_insn_operand" "e,c,b"))
 	 (match_operand 1 "" ""))
+   (use (unspec:SI [(match_operand 2 "const_int_operand")]
+	 UNSPEC_CALLEE_PCS))
    (clobber (reg:SI RETURN_ADDR_REGNUM))]
   ""
 {
@@ -3986,6 +4011,8 @@
   [(call (mem:P (lo_sum:P (match_operand:P 0 "register_operand" "j")
 			  (match_operand:P 1 "symbolic_operand" "")))
 	 (match_operand 2 "" ""))
+   (use (unspec:SI [(match_operand 3 "const_int_operand")]
+	 UNSPEC_CALLEE_PCS))
    (clobber (reg:SI RETURN_ADDR_REGNUM))]
   "TARGET_CMODEL_MEDIUM"
   "jirl\t$r1,%0,%%pc_lo12(%1)"
@@ -3995,7 +4022,8 @@
   [(parallel [(set (match_operand 0 "")
 		   (call (match_operand 1 "")
 			 (match_operand 2 "")))
-	      (use (match_operand 3 ""))])]		;; next_arg_reg
+	      (use (unspec:SI [(match_operand 3 "const_int_operand")]
+		    UNSPEC_CALLEE_PCS))])]
   ""
 {
   rtx target = loongarch_legitimize_call_address (XEXP (operands[1], 0));
@@ -4009,10 +4037,12 @@
 	emit_call_insn (gen_call_value_multiple_internal_1 (Pmode, arg1,
 							    XEXP (target, 0),
 							    XEXP (target, 1),
-							    operands[2], arg2));
+							    operands[2], arg2,
+							    operands[3]));
       else
 	emit_call_insn (gen_call_value_multiple_internal (arg1, target,
-							operands[2], arg2));
+							operands[2], arg2,
+							operands[3]));
     }
    else
     {
@@ -4024,10 +4054,12 @@
 	emit_call_insn (gen_call_value_internal_1 (Pmode, operands[0],
 						   XEXP (target, 0),
 						   XEXP (target, 1),
-						   operands[2]));
+						   operands[2],
+						   operands[3]));
       else
 	emit_call_insn (gen_call_value_internal (operands[0], target,
-					       operands[2]));
+					       operands[2],
+					       operands[3]));
     }
   DONE;
 })
@@ -4036,6 +4068,8 @@
   [(set (match_operand 0 "register_operand" "")
 	(call (mem:SI (match_operand 1 "call_insn_operand" "e,c,b"))
 	      (match_operand 2 "" "")))
+   (use (unspec:SI [(match_operand 3 "const_int_operand")]
+	 UNSPEC_CALLEE_PCS))
    (clobber (reg:SI RETURN_ADDR_REGNUM))]
   ""
 {
@@ -4064,6 +4098,8 @@
 	(call (mem:P (lo_sum:P (match_operand:P 1 "register_operand" "j")
 			       (match_operand:P 2 "symbolic_operand" "")))
 	      (match_operand 3 "" "")))
+   (use (unspec:SI [(match_operand 4 "const_int_operand")]
+	 UNSPEC_CALLEE_PCS))
    (clobber (reg:SI RETURN_ADDR_REGNUM))]
   "TARGET_CMODEL_MEDIUM"
   "jirl\t$r1,%1,%%pc_lo12(%2)"
@@ -4073,6 +4109,7 @@
   [(set (match_operand 0 "register_operand" "")
 	(call (mem:SI (match_operand 1 "call_insn_operand" "e,c,b"))
 	      (match_operand 2 "" "")))
+   (use (unspec:SI [(match_operand 4 "const_int_operand")] UNSPEC_CALLEE_PCS))
    (set (match_operand 3 "register_operand" "")
 	(call (mem:SI (match_dup 1))
 	      (match_dup 2)))
@@ -4105,6 +4142,7 @@
 			        (match_operand:P 2 "symbolic_operand" "")]
 		      UNSPEC_CALL_VALUE_MULTIPLE_INTERNAL_1))
 	      (match_operand 3 "" "")))
+   (use (unspec:SI [(match_operand 5 "const_int_operand")] UNSPEC_CALLEE_PCS))
    (set (match_operand 4 "register_operand" "")
 	(call (mem:P (unspec:P [(match_dup 1)
 			        (match_dup 2)]
@@ -4126,7 +4164,8 @@
 {
   int i;
 
-  emit_call_insn (gen_call (operands[0], const0_rtx, NULL, const0_rtx));
+  emit_call_insn (gen_call (operands[0], const0_rtx,
+	gen_int_mode (LA_PCS_DEFAULT, SImode)));
 
   for (i = 0; i < XVECLEN (operands[2], 0); i++)
     {
